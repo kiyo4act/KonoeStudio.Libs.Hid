@@ -10,46 +10,68 @@ namespace KonoeStudio.Tests.Hid.Stub
 {
     public class StubNativeHelper : INativeHelper
     {
-        public HidAttributes GetAttributes(SafeFileHandle hidHandle)
+        public bool IsReleasePreParsedHandle { get; private set; } = false;
+        public bool IsReleaseSafeDevInfoHandle { get; private set; } = false;
+        public bool IsGetAttributes { get; private set; } = false;
+        public bool IsGetCapabilities { get; private set; } = false;
+        public bool IsOpenDevice { get; private set; } = false;
+        public bool IsReadAsync { get; private set; } = false;
+        public bool IsWriteAsync { get; private set; } = false;
+        public bool IsThrow { get; set; } = false;
+        public bool IsFailureHandle { get; set; } = false;
+        public bool IsDelay { get; set; } = false;
+        public byte[] ReadReturnValue { get; set; } = {};
+        public byte[] WriteReturnValue { get; set; } = null;
+        public IEnumerable<IHidDeviceInfo> EnumerateDeviceInfoReturnValue { get; set; }
+
+    public HidAttributes GetAttributes(SafeFileHandle hidHandle)
         {
+            IsGetAttributes = true;
             return new HidAttributes();
         }
 
         public HidCapabilities GetCapabilities(SafeFileHandle hidHandle)
         {
+            IsGetCapabilities = true;
             return new HidCapabilities();
         }
 
         public SafeFileHandle OpenDevice(string devicePath, DesiredAccesses deviceAccesses, ShareModes shareModes, FileFlags flags)
         {
-            return new SafeFileHandle(IntPtr.Zero, true);
+            if(IsThrow) throw new Exception("TestException");
+            var returnValue = IsFailureHandle ? IntPtr.Zero : new IntPtr(1);
+            IsOpenDevice = true;
+            return new SafeFileHandle(returnValue, true);
         }
 
         public IEnumerable<IHidDeviceInfo> EnumerateDeviceInfo()
         {
-            for (int i = 0; i < 10; i++)
-            {
-                yield return new MockDeviceInfo($"devicePath{i}", $"description{i}", this);
-            }
+            return EnumerateDeviceInfoReturnValue;
         }
 
-        public Task<byte[]> ReadAsync(SafeFileHandle handle, short inputReportByteLength, CancellationToken token)
+        public async Task<byte[]> ReadAsync(SafeFileHandle handle, short inputReportByteLength, CancellationToken token)
         {
-            return Task.FromResult(new byte[]{1, 2, 3, 4, 5});
+            if (IsDelay) await Task.Delay(5000, token).ConfigureAwait(false);
+            IsReadAsync = true;
+            return ReadReturnValue;
         }
 
-        public Task WriteAsync(SafeFileHandle handle, short outputReportByteLength, byte[] data, CancellationToken token)
+        public async Task WriteAsync(SafeFileHandle handle, short outputReportByteLength, byte[] data, CancellationToken token)
         {
-            return Task.CompletedTask;
+            if (IsDelay) await Task.Delay(50000, token).ConfigureAwait(false);
+            IsWriteAsync = true;
+            WriteReturnValue = data;
         }
 
         public bool ReleaseSafeDevInfoHandle(IntPtr handle)
         {
+            IsReleaseSafeDevInfoHandle = true;
             return true;
         }
 
         public bool ReleasePreParsedHandle(IntPtr handle)
         {
+            IsReleasePreParsedHandle = true;
             return true;
         }
     }

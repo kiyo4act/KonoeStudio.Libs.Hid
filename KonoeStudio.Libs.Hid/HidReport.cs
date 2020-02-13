@@ -16,10 +16,10 @@ namespace KonoeStudio.Libs.Hid
             _data = data ?? Array.Empty<byte>();
         }
 
-        public HidReport(params byte[] wholeData): this(wholeData.Length, wholeData)
+        public HidReport(params byte[] wholeData): this(wholeData, wholeData.Length)
         {
         }
-        public HidReport(int reportAndDataSize, params byte[] data)
+        public HidReport(byte[] data, int reportAndDataSize)
         {
             if (data == null)
             {

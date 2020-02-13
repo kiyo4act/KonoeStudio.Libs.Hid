@@ -10,11 +10,11 @@ namespace KonoeStudio.Libs.Hid
         public IHidDeviceInfo DeviceInfo { get; }
         public bool IsReadOpened => ReadHandle != null && !ReadHandle.IsClosed && !ReadHandle.IsInvalid;
         public bool IsWriteOpened => WriteHandle != null && !WriteHandle.IsClosed && !WriteHandle.IsInvalid;
-        protected SafeFileHandle ReadHandle { get; private set; }
-        protected SafeFileHandle WriteHandle { get; private set; }
+        protected SafeFileHandle ReadHandle { get; set; }
+        protected SafeFileHandle WriteHandle { get; set; }
         protected INativeHelper Helper { get; }
-        protected CancellationTokenSource DisposeTokenSource { get; private set; } = new CancellationTokenSource();
-        protected CancellationToken DisposeToken { get; }
+        protected CancellationTokenSource DisposeTokenSource { get; set; } = new CancellationTokenSource();
+        protected CancellationToken DisposeToken { get; set;  }
 
         protected BaseHidDevice(IHidDeviceInfo deviceInfo, INativeHelper helper)
         {
@@ -95,8 +95,8 @@ namespace KonoeStudio.Libs.Hid
                 {
                     ReadHandle.Dispose();
                     ReadHandle = Helper.OpenDevice(DeviceInfo.DevicePath, DesiredAccesses.GenericRead,
-                        ShareModes.FileShareRead | ShareModes.FileShareWrite, FileFlags.FileFlagNone);
-                    result = true;
+                        ShareModes.FileShareRead | ShareModes.FileShareWrite, FileFlags.FileFlagOverlapped);
+                    result = IsReadOpened;
                 }
                 catch (Exception e)
                 {
@@ -117,8 +117,8 @@ namespace KonoeStudio.Libs.Hid
                 {
                     WriteHandle.Dispose();
                     WriteHandle = Helper.OpenDevice(DeviceInfo.DevicePath, DesiredAccesses.GenericWrite,
-                        ShareModes.FileShareRead | ShareModes.FileShareWrite, FileFlags.FileFlagNone);
-                    result = true;
+                        ShareModes.FileShareRead | ShareModes.FileShareWrite, FileFlags.FileFlagOverlapped);
+                    result = IsWriteOpened;
                 }
                 catch (Exception e)
                 {

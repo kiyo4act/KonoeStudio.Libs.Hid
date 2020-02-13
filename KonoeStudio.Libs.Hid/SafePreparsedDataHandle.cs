@@ -14,9 +14,6 @@ namespace KonoeStudio.Libs.Hid
         {
             Helper = helper ?? throw new ArgumentNullException($"{nameof(helper)} is null");
         }
-        public SafePreParsedDataHandle(IntPtr existingHandle) : this(existingHandle, new NativeHelper())
-        {
-        }
         public SafePreParsedDataHandle(IntPtr existingHandle, INativeHelper helper) : base (existingHandle, true)
         {
             Helper = helper ?? throw new ArgumentNullException($"{nameof(helper)} is null");

@@ -10,6 +10,7 @@ namespace KonoeStudio.Libs.Hid
 {
     internal class NativeHelper : INativeHelper
     {
+        public Encoding DescriptionEncoding { get; set; }
         private Guid _hidClassGuid = Guid.Empty;
         public Guid HidClassGuid
         {
@@ -22,6 +23,11 @@ namespace KonoeStudio.Libs.Hid
                 }
                 return _hidClassGuid;
             }
+        }
+
+        public NativeHelper(Encoding? descriptionEncoding = null)
+        {
+            DescriptionEncoding = descriptionEncoding ?? Encoding.Default;
         }
         public HidAttributes GetAttributes(SafeFileHandle handle)
         {
@@ -55,12 +61,12 @@ namespace KonoeStudio.Libs.Hid
 
             if (!preParseResult)
             {
-                throw new GetHidAttributesException($"Could not get pre-parsed data by this {nameof(handle)}: {handle}");
+                throw new GetHidCapabilitiesException($"Could not get pre-parsed data by this {nameof(handle)}: {handle}");
             }
 
             bool isGetCaps = false;
             //HIDP_CAPS caps = new HIDP_CAPS();
-            using (SafePreParsedDataHandle preParsedDataHandle = new SafePreParsedDataHandle(preparsedData))
+            using (SafePreParsedDataHandle preParsedDataHandle = new SafePreParsedDataHandle(preparsedData, this))
             {
                 var getCapResult = NativeMethods.HidP_GetCaps(preParsedDataHandle, capabilities);
 
@@ -71,7 +77,7 @@ namespace KonoeStudio.Libs.Hid
 
             if (!isGetCaps)
             {
-                throw new GetHidAttributesException($"Could not get capabilities by this {nameof(handle)}: {handle}");
+                throw new GetHidCapabilitiesException($"Could not get capabilities by this {nameof(handle)}: {handle}");
             }
 
             return capabilities;
@@ -98,37 +104,48 @@ namespace KonoeStudio.Libs.Hid
 
         public IEnumerable<IHidDeviceInfo> EnumerateDeviceInfo()
         {
-            var devices = new List<IHidDeviceInfo>();
             var hidClass = HidClassGuid;
 
-            using (SafeDevInfoHandle deviceInfoSet = NativeMethods.SetupDiGetClassDevs(hidClass, null, IntPtr.Zero, NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE))
+            using SafeDevInfoHandle deviceInfoSet = NativeMethods.SetupDiGetClassDevs(hidClass, null, IntPtr.Zero, NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE);
+            if (deviceInfoSet.IsInvalid)
             {
-                if (!deviceInfoSet.IsInvalid)
+                yield break;
+            }
+
+            SP_DEVINFO_DATA deviceInfoData = new SP_DEVINFO_DATA();
+            int deviceIndex = 0;
+
+            while (NativeMethods.SetupDiEnumDeviceInfo(deviceInfoSet, deviceIndex, deviceInfoData))
+            {
+                deviceIndex += 1;
+
+                SP_DEVICE_INTERFACE_DATA deviceInterfaceData = new SP_DEVICE_INTERFACE_DATA();
+                int deviceInterfaceIndex = 0;
+
+                while (NativeMethods.SetupDiEnumDeviceInterfaces(deviceInfoSet, deviceInfoData, hidClass, deviceInterfaceIndex, deviceInterfaceData))
                 {
-                    SP_DEVINFO_DATA deviceInfoData = new SP_DEVINFO_DATA();
-                    int deviceIndex = 0;
-
-                    while (NativeMethods.SetupDiEnumDeviceInfo(deviceInfoSet, deviceIndex, deviceInfoData))
+                    deviceInterfaceIndex++;
+                    string devicePath = GetDevicePath(deviceInfoSet, deviceInterfaceData);
+                    string busReportedDeviceDescription = GetBusReportedDeviceDescription(deviceInfoSet, deviceInfoData);
+                    string deviceDescription = GetDeviceDescription(deviceInfoSet, deviceInfoData);
+                    string description = string.IsNullOrEmpty(busReportedDeviceDescription) ? deviceDescription : busReportedDeviceDescription;
+                    IHidDeviceInfo? info = null;
+                    try
                     {
-                        deviceIndex += 1;
-
-                        SP_DEVICE_INTERFACE_DATA deviceInterfaceData = new SP_DEVICE_INTERFACE_DATA();
-                        int deviceInterfaceIndex = 0;
-
-                        while (NativeMethods.SetupDiEnumDeviceInterfaces(deviceInfoSet, deviceInfoData, hidClass, deviceInterfaceIndex, deviceInterfaceData))
-                        {
-                            deviceInterfaceIndex++;
-                            string devicePath = GetDevicePath(deviceInfoSet, deviceInterfaceData);
-                            string busReportedDeviceDescription = GetBusReportedDeviceDescription(deviceInfoSet, deviceInfoData);
-                            string deviceDescription = GetDeviceDescription(deviceInfoSet, deviceInfoData);
-                            string description = string.IsNullOrEmpty(busReportedDeviceDescription) ? deviceDescription : busReportedDeviceDescription;
-                            devices.Add(new HidDeviceInfo(devicePath, description));
-                        }
+                        info = new HidDeviceInfo(devicePath, description);
                     }
+                    catch (GetHidAttributesException)
+                    {
+                        //Console.WriteLine("GetHidCapabilitiesException");
+                    }
+                    catch (GetHidCapabilitiesException) { }
 
+                    if (info != null)
+                    {
+                        yield return info;
+                    }
                 }
             }
-            return devices;
         }
 
         public async Task<byte[]> ReadAsync(SafeFileHandle handle, short inputReportByteLength, CancellationToken token)
@@ -142,13 +159,13 @@ namespace KonoeStudio.Libs.Hid
             byte[] result = new byte[inputReportByteLength];
 
             token.ThrowIfCancellationRequested();
-            using (var resetEvent = new ManualResetEventSlim(false))
+            using (var resetEvent = new ManualResetEvent(false))
             {
                 var overlapped = new NativeOverlapped
                 {
                     OffsetLow = 0,
                     OffsetHigh = 0,
-                    EventHandle = resetEvent.WaitHandle.SafeWaitHandle.DangerousGetHandle()
+                    EventHandle = resetEvent.SafeWaitHandle.DangerousGetHandle()
                 };
 
                 try
@@ -156,30 +173,30 @@ namespace KonoeStudio.Libs.Hid
                     unmanagedBuffer = Marshal.AllocHGlobal(result.Length);
                     bool readResult = NativeMethods.ReadFile(handle, unmanagedBuffer, (uint)result.Length, out uint bytesRead, ref overlapped);
 
-                    if (readResult)
+                    int hResult = Marshal.GetHRForLastWin32Error();
+                    if (readResult || hResult == NativeMethods.ERROR_SUCCESS)
                     {
+                        if (bytesRead != result.Length)
+                        {
+                            // TODO: Error handling if need
+                        }
                         // Already I/O Completed
                         Marshal.Copy(unmanagedBuffer, result, 0, (int)bytesRead);
+                        return result;
                     }
-                    else if (bytesRead != result.Length)
+                    else if (hResult != NativeMethods.ERROR_IO_PENDING)
                     {
-                        // TODO: Error handling if need
+                        // Read error by other reason
+                        Marshal.ThrowExceptionForHR(hResult);
                     }
                     else
                     {
-                        int hResult = Marshal.GetHRForLastWin32Error();
-                        if (hResult != NativeMethods.ERROR_IO_PENDING)
-                        {
-                            // Read error by other reason
-                            Marshal.ThrowExceptionForHR(hResult);
-                        }
-
-                        // Asynchronous waiting
                         bool isCanceled = false;
                         bool isComplete = false;
                         try
                         {
-                            isComplete = await resetEvent.WaitHandle.WaitOneAsync(token).ConfigureAwait(false);
+                            // Asynchronous waiting
+                            isComplete = await resetEvent.WaitOneAsync(token).ConfigureAwait(false);
                         }
                         catch (OperationCanceledException)
                         {
@@ -238,32 +255,40 @@ namespace KonoeStudio.Libs.Hid
             }
 
             token.ThrowIfCancellationRequested();
-            using (var resetEvent = new ManualResetEventSlim(false))
+            using (var resetEvent = new ManualResetEvent(false))
             {
                 var overlapped = new NativeOverlapped
                 {
                     OffsetLow = 0,
                     OffsetHigh = 0,
-                    EventHandle = resetEvent.WaitHandle.SafeWaitHandle.DangerousGetHandle()
+                    EventHandle = resetEvent.SafeWaitHandle.DangerousGetHandle()
                 };
 
                 bool writeResult = NativeMethods.WriteFile(handle, data, (uint)data.Length, out uint bytesWritten, ref overlapped);
 
-                if (!writeResult)
+                int hResult = Marshal.GetHRForLastWin32Error();
+                if (writeResult || hResult == NativeMethods.ERROR_SUCCESS)
                 {
-                    int hResult = Marshal.GetHRForLastWin32Error();
-                    if (hResult != NativeMethods.ERROR_IO_PENDING)
+                    if (bytesWritten != data.Length)
                     {
-                        // Read error by other reason
-                        Marshal.ThrowExceptionForHR(hResult);
+                        // TODO: Error handling if need
                     }
-
-                    // Asynchronous waiting
+                    // Already I/O Completed
+                    return;
+                }
+                else if (hResult != NativeMethods.ERROR_IO_PENDING)
+                {
+                    // Read error by other reason
+                    Marshal.ThrowExceptionForHR(hResult);
+                }
+                else
+                {
                     bool isCanceled = false;
                     bool isComplete = false;
                     try
                     {
-                        isComplete = await resetEvent.WaitHandle.WaitOneAsync(token).ConfigureAwait(false);
+                        // Asynchronous waiting
+                        isComplete = await resetEvent.WaitOneAsync(token).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
@@ -300,10 +325,6 @@ namespace KonoeStudio.Libs.Hid
                         token.ThrowIfCancellationRequested();
                     }
                 }
-                else if (bytesWritten != data.Length)
-                {
-                    // TODO: Error handling if need
-                }
             }
         }
 
@@ -335,7 +356,7 @@ namespace KonoeStudio.Libs.Hid
             return string.Empty;
         }
 
-        private static string GetDeviceDescription(SafeDevInfoHandle deviceInfoSet, SP_DEVINFO_DATA devinfoData)
+        private string GetDeviceDescription(SafeDevInfoHandle deviceInfoSet, SP_DEVINFO_DATA devinfoData)
         {
             var descriptionBuffer = new byte[1024];
             string resultString = string.Empty;
@@ -353,13 +374,14 @@ namespace KonoeStudio.Libs.Hid
 
             if (result)
             {
-                resultString = Encoding.Default.GetString(descriptionBuffer).TrimEnd('\0');
+                Encoding.GetEncodings();
+                resultString = DescriptionEncoding.GetString(descriptionBuffer).TrimEnd('\0');
             }
 
             return resultString;
         }
 
-        private static string GetBusReportedDeviceDescription(SafeDevInfoHandle deviceInfoSet, SP_DEVINFO_DATA devinfoData)
+        private string GetBusReportedDeviceDescription(SafeDevInfoHandle deviceInfoSet, SP_DEVINFO_DATA devinfoData)
         {
             var descriptionBuffer = new byte[1024];
             string resultString = string.Empty;
@@ -381,7 +403,7 @@ namespace KonoeStudio.Libs.Hid
 
                 if (result)
                 {
-                    resultString = Encoding.Unicode.GetString(descriptionBuffer).TrimEnd('\0');
+                    resultString = DescriptionEncoding.GetString(descriptionBuffer).TrimEnd('\0');
                 }
             }
             return resultString;
