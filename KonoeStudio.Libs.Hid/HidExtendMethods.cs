@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reactive.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,7 +15,7 @@ namespace KonoeStudio.Libs.Hid
             {
                 throw new ArgumentNullException($"{nameof(device)} is null");
             }
-            return new HidReport(device.DeviceInfo.Capabilities.InputReportByteLength, await device.ReadRawDataAsync().ConfigureAwait(false));
+            return new HidReport(await device.ReadRawDataAsync().ConfigureAwait(false), device.DeviceInfo.Capabilities.InputReportByteLength);
         }
 
         public static async Task<IHidReport> ReadReportAsync(this IHidDevice device, CancellationToken token)
@@ -23,7 +24,7 @@ namespace KonoeStudio.Libs.Hid
             {
                 throw new ArgumentNullException($"{nameof(device)} is null");
             }
-            return new HidReport(device.DeviceInfo.Capabilities.InputReportByteLength, await device.ReadRawDataAsync(token).ConfigureAwait(false));
+            return new HidReport(await device.ReadRawDataAsync(token).ConfigureAwait(false), device.DeviceInfo.Capabilities.InputReportByteLength);
         }
 
         public static Task WriteReportAsync(this IHidDevice device, IHidReport report)

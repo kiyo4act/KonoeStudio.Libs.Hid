@@ -14,6 +14,10 @@ namespace KonoeStudio.Libs.Hid
         {
             Helper = helper ?? throw new ArgumentNullException($"{nameof(helper)} is null");
         }
+        public SafeDevInfoHandle(IntPtr existingHandle, INativeHelper helper) : base(existingHandle, true)
+        {
+            Helper = helper ?? throw new ArgumentNullException($"{nameof(helper)} is null");
+        }
         protected override bool ReleaseHandle()
         {
             return Helper.ReleaseSafeDevInfoHandle(handle);

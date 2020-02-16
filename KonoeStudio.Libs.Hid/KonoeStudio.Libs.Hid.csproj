@@ -13,6 +13,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="System.Interactive.Async" Version="4.0.0" />
+    <PackageReference Include="System.Reactive.Core" Version="4.3.2" />
   </ItemGroup>
 
 </Project>

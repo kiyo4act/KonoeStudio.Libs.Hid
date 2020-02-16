@@ -17,7 +17,7 @@ namespace KonoeStudio.Libs.Hid
         protected BaseHidDeviceInfoCollection(INativeHelper helper)
         {
             Helper = helper ?? throw new ArgumentNullException($"{nameof(helper)} is null");
-            _innerList = helper.EnumerateDeviceInfo().ToList();
+            _innerList = helper.EnumerateDeviceInfo()?.ToList() ?? new List<IHidDeviceInfo>();
         }
 
         public IEnumerator<IHidDeviceInfo> GetEnumerator()

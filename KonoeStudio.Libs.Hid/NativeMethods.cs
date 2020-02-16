@@ -9,8 +9,9 @@ namespace KonoeStudio.Libs.Hid
     {
         #region Constants
 
-        internal const int ERROR_IO_PENDING = 0x000003E5; // 997
-        //internal const int ERROR_NOT_FOUND = 0x00000490; // 1168
+        internal const int ERROR_SUCCESS = -2147024896; // 0x80070000
+        internal const int ERROR_IO_PENDING = -2147023899; // 0x800703E5
+        //internal const int ERROR_NOT_FOUND = 1168; // 0x00000490
         internal const short OPEN_EXISTING = 3;
         internal const short DIGCF_PRESENT = 0x0002;
         internal const short DIGCF_DEVICEINTERFACE = 0x0010;

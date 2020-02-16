@@ -1,8 +1,10 @@
-﻿namespace KonoeStudio.Libs.Hid
+﻿using System.Text;
+
+namespace KonoeStudio.Libs.Hid
 {
     public class HidDeviceInfoCollection : BaseHidDeviceInfoCollection
     {
-        public HidDeviceInfoCollection() : base(new NativeHelper())
+        public HidDeviceInfoCollection(Encoding? descriptionEncoding = null) : base(new NativeHelper(descriptionEncoding))
         {
         }
     }
